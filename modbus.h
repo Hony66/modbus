@@ -34,18 +34,20 @@ typedef struct
 //扩展数据区间，用于特殊指令
 #define MODBUS_EX_REG_END (MODBUS_EX_REG_START + MODBUS_EX_REG_TOTAL - 1)
 
-//显示器专用地址
-#define MODBUS_DISPLAYER_ADDR      0xF8U
+//扩展从机地址
+#define MODBUS_EX_SLAVE_ADDR       0xF8U
 
 //广播地址
 #define MODBUS_SLAVE_BROADCAST_ADDR      0U
+
 //功能码
 #define MODBUS_FUNC_CODE_R 0x03 //读单个或多个寄存器
 #define MODBUS_FUNC_CODE_W_MULTI 0x10 //写多个寄存器
-//自定义功能码
-#include "boot.h"
-#define MODBUS_FUNC_CODE_DIY1          GOTO_BOOT   
-#define MODBUS_FUNC_CODE_DIY2          SYS_DATA_EX_FCODE   
+#define MODBUS_FUNC_CODE_W_SINGLE 0x06 //写单个寄存器
+
+
+//自定义功能码  
+
 
 //返回的错误代码
 #define MODBUS_ERR_CODE_FUNC 0X01

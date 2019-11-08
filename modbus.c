@@ -2,7 +2,9 @@
 MODBUS RTU 协议文件
 
 v1.0 20180807 发布支持 03,10 功能码
+v1.0 20191021 支持 06 功能码
 */
+
 #include "modbus.h"
 
 
@@ -76,9 +78,14 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
         return MODBUS_CRC_ERR;
     }
     //地址匹配
-    if (modbus->pRxBuffer[0] != modbus->SlaveAddr 
+	#ifdef MODBUS_EX_SLAVE_ADDR
+	if (modbus->pRxBuffer[0] != modbus->SlaveAddr 
         && modbus->pRxBuffer[0] != MODBUS_SLAVE_BROADCAST_ADDR
-        && modbus->pRxBuffer[0] != MODBUS_DISPLAYER_ADDR)
+        && modbus->pRxBuffer[0] != MODBUS_EX_SLAVE_ADDR)
+	#else
+    if (modbus->pRxBuffer[0] != modbus->SlaveAddr 
+        && modbus->pRxBuffer[0] != MODBUS_SLAVE_BROADCAST_ADDR)
+	#endif
     {
         return MODBUS_ADDR_ERR;
     }
@@ -99,7 +106,11 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
         }
 #if MODBUS_RO_REG_START == (MODBUS_RW_REG_END + 1)//RW + RO
         //寄存器地址匹配
+        #if MODBUS_RW_REG_START == 0u
+        if (nReg != 0 && nReg <= (MODBUS_RO_REG_TOTAL + MODBUS_RW_REG_TOTAL)  && startReg <= MODBUS_RO_REG_END && (startReg + nReg) <= (MODBUS_RO_REG_END + 1))
+        #else
         if (nReg != 0 && nReg <= (MODBUS_RO_REG_TOTAL + MODBUS_RW_REG_TOTAL) && startReg >= MODBUS_RW_REG_START && startReg <= MODBUS_RO_REG_END && (startReg + nReg) <= (MODBUS_RO_REG_END + 1))
+        #endif
         { //在实时数据区
             for (i = 0; i < nReg; i++)
             {
@@ -194,7 +205,46 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
         }
 #endif
         break;
-
+    case MODBUS_FUNC_CODE_W_SINGLE:
+        {
+            #if MODBUS_RW_REG_START == 0u
+            if(startReg <= MODBUS_RW_REG_END)
+            #else
+            if(startReg >= MODBUS_RW_REG_START && startReg <= MODBUS_RW_REG_END)
+            #endif
+            {
+                //在系统参数区
+                modbus->extract_reg_data.pTr = &((unsigned char *)modbus->pRxBuffer)[4];//寄存器值
+                modbus->extract_reg_data.nRegs = 1;
+                modbus->extract_reg_data.offset = startReg - MODBUS_RW_REG_START;
+                if (modbus->func_write_regs_check(&modbus->extract_reg_data) == OK)
+                {
+                    /* code */
+                    modbus->pTxBuffer[2] = modbus->pRxBuffer[2];
+                    modbus->pTxBuffer[3] = modbus->pRxBuffer[3];
+                    modbus->pTxBuffer[4] = modbus->pRxBuffer[4];
+                    modbus->pTxBuffer[5] = modbus->pRxBuffer[5];
+                    cal_crc_len = 6;
+                    //参数保存
+                    cflag |= CFLAG_IS_SAVE_REG;
+                }
+                else
+                {
+                    /* err data */
+                    modbus->pTxBuffer[1] |= 0X80;
+                    modbus->pTxBuffer[2] = MODBUS_ERR_CODE_DATA;
+                    cal_crc_len = 3;
+                }
+            }
+            else
+            {
+                /* err reg addr */
+                modbus->pTxBuffer[1] |= 0X80;
+                modbus->pTxBuffer[2] = MODBUS_ERR_CODE_REG;
+                cal_crc_len = 3;
+            }
+        }
+        break;
     case MODBUS_FUNC_CODE_W_MULTI:
         //长度匹配
         if (modbus->pRxBuffer[6] != nReg * 2 || modbus->pRxBuffer[6] != modbus->RxLen- 9)
@@ -241,32 +291,6 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
         modbus_fcode_wt_hook();
 #endif
         break;
-#ifdef MODBUS_FUNC_CODE_DIY1
-    case MODBUS_FUNC_CODE_DIY1:
-        if(modbus_fcode_diy1_hook(modbus) == 0)
-        {
-            modbus->pTxBuffer[1] |= 0X80;
-            modbus->pTxBuffer[2] = MODBUS_ERR_CODE_DATA;
-            cal_crc_len = 3;
-        }
-        break;
-#endif
-#ifdef MODBUS_FUNC_CODE_DIY2
-    case MODBUS_FUNC_CODE_DIY2:
-        #if MODBUS_EX_REG_START == 0U
-        if (nReg != 0 && nReg <= MODBUS_EX_REG_TOTAL && startReg <= MODBUS_EX_REG_END && (startReg + nReg) <= (MODBUS_RO_REG_END + 1))
-        #else
-        if (nReg != 0 && nReg <= MODBUS_EX_REG_TOTAL && startReg >= MODBUS_EX_REG_START && startReg <= MODBUS_EX_REG_END && (startReg + nReg) <= (MODBUS_RO_REG_END + 1))
-        #endif
-        {
-            modbus->extract_reg_data.pTr = &((unsigned char *)modbus->pRxBuffer)[7];
-            modbus->extract_reg_data.nRegs = nReg;
-            modbus->extract_reg_data.offset = startReg - MODBUS_EX_REG_START;
-            sys_data_exchange_proc(&modbus->extract_reg_data);
-        }
-        cflag &= ~CFALG_IS_NEED_REPLY;
-        break;
-#endif
     default:
         /* err  func code */
         modbus->pTxBuffer[1] |= 0X80;
