@@ -1,16 +1,30 @@
-/*
-MODBUS RTU 协议文件
-
-v1.0 20180807 发布支持 03,10 功能码
-v1.0 20191021 支持 06 功能码
-*/
+/**
+  ******************************************************************************
+  * @file    modbus.c
+  * @author  Hony
+  * @version V1.1a
+  * @date    2020-04-01
+  * @brief   MODBUS RTU 协议文件, 支持 0x03, 0x06, 0x10功能码
+  @verbatim
+  2018-08-07 V1.0
+    创建, 支持 0x03读保持寄存器, 0x10连续写寄存器功能码
+  2019-10-21 V1.1
+    支持 0x06 写单个寄存器 功能码
+  2019-04-01 V1.1a
+    增加DIY功能码, 目前支持03,06,10功能码；支持0地址广播；支持固定地址回复；
+  @endverbatim
+  ******************************************************************************
+  * @attention
+  * 
+  ******************************************************************************  
+  */
 
 #include "modbus.h"
 
 
 #if MODBUS_HOOK_FCODE_RD == 1u
 //读命令钩子函数
-__weak void modbus_fcode_rd_hook(void)
+__WEAK void modbus_fcode_rd_hook(void)
 {
     ;
 }
@@ -18,7 +32,7 @@ __weak void modbus_fcode_rd_hook(void)
 
 #if MODBUS_HOOK_FCODE_RD_PARAM == 1u
 //读参数区钩子函数
-__weak void modbus_fcode_rd_param_hook(void)
+__WEAK void modbus_fcode_rd_param_hook(void)
 {
     ;
 }
@@ -26,14 +40,14 @@ __weak void modbus_fcode_rd_param_hook(void)
 
 #if MODBUS_HOOK_FCODE_WT == 1u
 //写命令钩子函数
-__weak void modbus_fcode_wt_hook(void)
+__WEAK void modbus_fcode_wt_hook(void)
 {
     ;
 }
 #endif
 
 #ifdef MODBUS_FUNC_CODE_DIY1
-__weak unsigned char modbus_fcode_diy1_hook(Modbus_TypeDef * modbus)
+__WEAK unsigned char modbus_fcode_diy1_hook(Modbus_TypeDef * modbus)
 {
     (void)modbus;
     return 0;
@@ -64,11 +78,10 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
     cflag |= CFALG_IS_NEED_REPLY;
     //参数检查
     if (modbus == NULL 
-    || modbus->pRxBuffer == NULL 
-    || modbus->pTxBuffer == 0 
-    || modbus->func_send_data == NULL
-    || modbus->func_crc16 == NULL
-    || modbus->func_write_regs_check == NULL)
+        || modbus->pRxBuffer == NULL 
+        || modbus->pTxBuffer == NULL 
+        || modbus->func_send_data == NULL
+        || modbus->func_crc16 == NULL)
     {
         return MODBUS_INPUT_ERR;
     }
@@ -89,16 +102,23 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
     {
         return MODBUS_ADDR_ERR;
     }
-    startReg = (((unsigned short)modbus->pRxBuffer[2]) << 8) + modbus->pRxBuffer[3];
-    nReg = (((unsigned short)modbus->pRxBuffer[4]) << 8) + modbus->pRxBuffer[5];
+    
     modbus->pTxBuffer[0] = modbus->pRxBuffer[0];
     modbus->pTxBuffer[1] = modbus->pRxBuffer[1];
     //功能码匹配
     switch (modbus->pRxBuffer[1])
     {
     case MODBUS_FUNC_CODE_R:
+        //得到读寄存器起始地址
+        startReg = (((unsigned short)modbus->pRxBuffer[2]) << 8) + modbus->pRxBuffer[3];
+        //得到读寄存器个数
+        nReg = (((unsigned short)modbus->pRxBuffer[4]) << 8) + modbus->pRxBuffer[5];
         modbus->pTxBuffer[2] = nReg * 2;
         cal_crc_len = modbus->pTxBuffer[2] + 3;
+        if(nReg > MODBUS_TRANS_REG_MAX)
+        {
+            return MODBUS_LEN_ERR;
+        }
         //长度匹配
         if (modbus->RxLen!= 8)
         {
@@ -207,6 +227,8 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
         break;
     case MODBUS_FUNC_CODE_W_SINGLE:
         {
+            //得到写寄存器地址
+            startReg = (((unsigned short)modbus->pRxBuffer[2]) << 8) + modbus->pRxBuffer[3];
             #if MODBUS_RW_REG_START == 0u
             if(startReg <= MODBUS_RW_REG_END)
             #else
@@ -217,7 +239,7 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
                 modbus->extract_reg_data.pTr = &((unsigned char *)modbus->pRxBuffer)[4];//寄存器值
                 modbus->extract_reg_data.nRegs = 1;
                 modbus->extract_reg_data.offset = startReg - MODBUS_RW_REG_START;
-                if (modbus->func_write_regs_check(&modbus->extract_reg_data) == OK)
+                if (modbus->func_write_regs_check == NULL || modbus->func_write_regs_check(&modbus->extract_reg_data) == OK)
                 {
                     /* code */
                     modbus->pTxBuffer[2] = modbus->pRxBuffer[2];
@@ -246,6 +268,14 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
         }
         break;
     case MODBUS_FUNC_CODE_W_MULTI:
+        //得到写寄存器起始地址
+        startReg = (((unsigned short)modbus->pRxBuffer[2]) << 8) + modbus->pRxBuffer[3];
+        //得到写寄存器个数
+        nReg = (((unsigned short)modbus->pRxBuffer[4]) << 8) + modbus->pRxBuffer[5];
+        if(nReg > MODBUS_TRANS_REG_MAX)
+        {
+            return MODBUS_LEN_ERR;
+        }
         //长度匹配
         if (modbus->pRxBuffer[6] != nReg * 2 || modbus->pRxBuffer[6] != modbus->RxLen- 9)
         {
@@ -260,7 +290,7 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
             modbus->extract_reg_data.pTr = &((unsigned char *)modbus->pRxBuffer)[7];
             modbus->extract_reg_data.nRegs = nReg;
             modbus->extract_reg_data.offset = startReg - MODBUS_RW_REG_START;
-            if (modbus->func_write_regs_check(&modbus->extract_reg_data) == OK)
+            if (modbus->func_write_regs_check == NULL || modbus->func_write_regs_check(&modbus->extract_reg_data) == OK)
             {
                 /* code */
                 modbus->pTxBuffer[2] = modbus->pRxBuffer[2];
@@ -291,6 +321,16 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
         modbus_fcode_wt_hook();
 #endif
         break;
+#ifdef MODBUS_FUNC_CODE_DIY1
+    case MODBUS_FUNC_CODE_DIY1:
+        if(modbus_fcode_diy1_hook(modbus) == 0)
+        {
+            modbus->pTxBuffer[1] |= 0X80;
+            modbus->pTxBuffer[2] = MODBUS_ERR_CODE_DATA;
+            cal_crc_len = 3;
+        }
+        break;
+#endif
     default:
         /* err  func code */
         modbus->pTxBuffer[1] |= 0X80;
@@ -306,9 +346,12 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
         modbus->pTxBuffer[cal_crc_len + 1] = crc16 >> 8;
         modbus->func_send_data(modbus->pTxBuffer, cal_crc_len + 2);
     }
-    if (cflag & CFLAG_IS_SAVE_REG)
+    if (modbus->func_save_regs != NULL && (cflag & CFLAG_IS_SAVE_REG) != 0)
     {
         modbus->func_save_regs(&modbus->extract_reg_data);
     }
+    #undef CFLAG_IS_SAVE_REG
+    #undef CFALG_IS_RD_PARAM
+    #undef CFALG_IS_NEED_REPLY
     return MODBUS_OK;
 }

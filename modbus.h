@@ -2,59 +2,45 @@
 #define __MODBUS_H
 
 #ifndef NULL
-#define NULL 0
+	#define NULL 0
 #endif
+          
+//***** user config area start****************************************************************
 
-typedef struct 
-{
-    unsigned char * pTr;//提取的数据域指针
-    unsigned char offset;//寄存器偏移
-    unsigned char nRegs;//提取的寄存器个数
-} Modbus_Extract_TypeDef;
+//modbus 只读和可读写区域之间可以相邻，不能重叠
+#define MODBUS_RW_REG_START               0U       //《自定义》
+#define MODBUS_RW_REG_TOTAL               1U       //《自定义》
+#define MODBUS_RO_REG_START               1U       //《自定义》
+#define MODBUS_RO_REG_TOTAL               1U       //《自定义》
+//钩子函数
+#define MODBUS_HOOK_FCODE_RD              0U       //《自定义》
+#define MODBUS_HOOK_FCODE_RD_PARAM        1U       //《自定义》
+#define MODBUS_HOOK_FCODE_WT              0U       //《自定义》
+//用户DIY功能码
+//#define MODBUS_FUNC_CODE_DIY1                    //《自定义》
+//扩展从机地址，相当于广播地址，但是从机响应此广播
+#define MODBUS_EX_SLAVE_ADDR              0xF8U    //《自定义》
+
+//***** user config area end ******************************************************************
 
 
-//***** user config area start****************************
-//***** 区域之间必须不能重叠 **********************************
-#include "sys.h"
-#define MODBUS_RW_REG_START SYS_RW_REG_START
-#define MODBUS_RW_REG_TOTAL SYS_RW_REG_TOTAL
-#define MODBUS_RO_REG_START SYS_RO_REG_START
-#define MODBUS_RO_REG_TOTAL SYS_RO_REG_TOTAL
-//扩展数据区间，用于特殊指令
-#define MODBUS_EX_REG_START SYS_EX_REG_START
-#define MODBUS_EX_REG_TOTAL SYS_EX_REG_TOTAL
-
-#define MODBUS_HOOK_FCODE_RD              0U
-#define MODBUS_HOOK_FCODE_RD_PARAM        1U
-#define MODBUS_HOOK_FCODE_WT              0U
-//***** user config area end ****************************
 
 #define MODBUS_RW_REG_END (MODBUS_RW_REG_START + MODBUS_RW_REG_TOTAL - 1)
 #define MODBUS_RO_REG_END (MODBUS_RO_REG_START + MODBUS_RO_REG_TOTAL - 1)
-//扩展数据区间，用于特殊指令
-#define MODBUS_EX_REG_END (MODBUS_EX_REG_START + MODBUS_EX_REG_TOTAL - 1)
-
-//扩展从机地址
-#define MODBUS_EX_SLAVE_ADDR       0xF8U
-
 //广播地址
-#define MODBUS_SLAVE_BROADCAST_ADDR      0U
-
+#define MODBUS_SLAVE_BROADCAST_ADDR     0U   //广播地址
 //功能码
-#define MODBUS_FUNC_CODE_R 0x03 //读单个或多个寄存器
-#define MODBUS_FUNC_CODE_W_MULTI 0x10 //写多个寄存器
-#define MODBUS_FUNC_CODE_W_SINGLE 0x06 //写单个寄存器
-
-
-//自定义功能码  
-
-
+#define MODBUS_FUNC_CODE_R              0x03 //读单个或多个寄存器
+#define MODBUS_FUNC_CODE_W_MULTI        0x10 //写多个寄存器
+#define MODBUS_FUNC_CODE_W_SINGLE       0x06 //写单个寄存器
+//一次传输的寄存器最多个数
+#define MODBUS_TRANS_REG_MAX            124u
 //返回的错误代码
-#define MODBUS_ERR_CODE_FUNC 0X01
-#define MODBUS_ERR_CODE_REG 0X02
-#define MODBUS_ERR_CODE_DATA 0X03
-#define MODBUS_ERR_CODE_FAULT 0X04
-#define MODBUS_ERR_CODE_BUSY 0X06
+#define MODBUS_ERR_CODE_FUNC            0X01
+#define MODBUS_ERR_CODE_REG             0X02
+#define MODBUS_ERR_CODE_DATA            0X03
+#define MODBUS_ERR_CODE_FAULT           0X04
+#define MODBUS_ERR_CODE_BUSY            0X06
 
 typedef enum{
     MODBUS_OK = 0,
@@ -69,6 +55,13 @@ typedef enum
     ERR = 0,
     OK = 1,
 } Func_State_Enum;
+
+typedef struct 
+{
+    unsigned char * pTr;//提取的数据域指针
+    unsigned char offset;//寄存器偏移
+    unsigned char nRegs;//提取的寄存器个数
+} Modbus_Extract_TypeDef;
 
 typedef struct
 {
@@ -88,5 +81,3 @@ typedef struct
 Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus);
 
 #endif
-
-
