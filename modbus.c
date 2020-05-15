@@ -2,8 +2,8 @@
   ******************************************************************************
   * @file    modbus.c
   * @author  Hony
-  * @version V1.1a
-  * @date    2020-04-01
+  * @version V1.1b
+  * @date    2020-05-16
   * @brief   MODBUS RTU 协议文件, 支持 0x03, 0x06, 0x10功能码
   @verbatim
   2018-08-07 V1.0
@@ -12,6 +12,8 @@
     支持 0x06 写单个寄存器 功能码
   2019-04-01 V1.1a
     增加DIY功能码, 目前支持03,06,10功能码；支持0地址广播；支持固定地址回复；
+  2020-05-16 V1.1b
+    修正发送函数指针的未检查，防止空指针
   @endverbatim
   ******************************************************************************
   * @attention
@@ -338,7 +340,9 @@ Modbus_State_Enum modbus_proc(Modbus_TypeDef *modbus)
         cal_crc_len = 3;
         break;
     }
-    if(modbus->pRxBuffer[0] != MODBUS_SLAVE_BROADCAST_ADDR && (cflag & CFALG_IS_NEED_REPLY) != 0)
+    if(modbus->func_send_data != NULL 
+        && modbus->pRxBuffer[0] != MODBUS_SLAVE_BROADCAST_ADDR 
+        && (cflag & CFALG_IS_NEED_REPLY) != 0)
     {
         //计算CRC
         crc16 = modbus->func_crc16(modbus->pTxBuffer, cal_crc_len);
